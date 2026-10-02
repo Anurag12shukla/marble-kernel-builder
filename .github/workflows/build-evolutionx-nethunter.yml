@@ -346,3 +346,4 @@ Wi-Fi injection NOT claimed — hardware testing required.
 DO NOT flash automatically. Review SHA256 and \`MARBLE_NETHUNTER_FEATURE_MANIFEST.md\`.
 
 Built by GitHub Actions — Run #${{ github.run_number }}"
+# NetHunter kernel — dispatch trigger re-index
