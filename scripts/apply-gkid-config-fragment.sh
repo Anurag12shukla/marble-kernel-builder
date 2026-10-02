@@ -23,10 +23,11 @@
 set -euo pipefail
 
 KERNEL_SOURCE="${KERNEL_SOURCE:-}"
-KERNEL_DIR="${KERNEL_DIR:-kernel-source}"
+KERNEL_DIR="${KERNEL_DIR:-.}"   # default to . when called from inside kernel dir
 OUT_DIR="${OUT_DIR:-out}"
 ARCH="${ARCH:-arm64}"
-FRAGMENT_DIR="config/fragments"
+SKIP_OLDDEFCONFIG="${SKIP_OLDDEFCONFIG:-0}"  # set to 1 when called from build-kernel.sh
+FRAGMENT_DIR="${GITHUB_WORKSPACE:-.}/config/fragments"
 FRAGMENT="evox-gkid-performance.config"
 
 # ── Guard: only activate for evolution-x source ──────────────────────────────
@@ -221,3 +222,13 @@ fi
 
 echo ""
 echo "✅ GKID config fragment applied and verified."
+
+# ── Run olddefconfig unless caller (build-kernel.sh) is handling it ──────────
+if [[ "${SKIP_OLDDEFCONFIG}" != "1" ]]; then
+  echo ""
+  echo "▸ Running olddefconfig to resolve symbol dependencies"
+  make -C "${KERNEL_DIR}" O="${OUT_DIR}" ARCH="${ARCH}" LLVM=1 LLVM_IAS=1 \
+    olddefconfig 2>&1
+else
+  echo "▸ Skipping olddefconfig (build-kernel.sh will run it after this script)"
+fi

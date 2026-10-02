@@ -135,6 +135,20 @@ case "${LTO}" in
     ;;
 esac
 
+# ── Apply GKID performance config fragment (evolution-x only) ──────────────
+# Called here because .config now exists (defconfig + GKI fragments merged).
+# The script is a no-op when KERNEL_SOURCE != "evolution-x".
+# Running from inside KERNEL_DIR (pushd was already done above), so we set
+# KERNEL_DIR=. and let the script find .config at OUT_DIR/.config.
+# olddefconfig is NOT called inside the script — we call it on line 138 below.
+GKID_SCRIPT="${GITHUB_WORKSPACE:-..}/scripts/apply-gkid-config-fragment.sh"
+if [[ -f "${GKID_SCRIPT}" ]]; then
+  KERNEL_DIR="." SKIP_OLDDEFCONFIG=1 \
+    bash "${GKID_SCRIPT}" 2>&1 | tee -a "${RELEASE_DIR}/build.log"
+else
+  echo "GKID script not found at ${GKID_SCRIPT} — skipping"
+fi
+
 make O="${OUT_DIR}" ARCH="${ARCH}" LLVM=1 LLVM_IAS=1 CC="${CC}" olddefconfig 2>&1 | tee -a "${RELEASE_DIR}/build.log"
 
 if [[ "${MANAGER}" != "none" ]] && ! grep -q '^CONFIG_KSU=y$' "${OUT_DIR}/.config"; then

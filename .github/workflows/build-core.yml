@@ -343,14 +343,9 @@ jobs:
       - name: Apply SUSFS
         run: bash scripts/apply-susfs.sh
 
-      # Apply GKID performance config options for evolution-x builds.
-      # No-op for all other kernel sources (script guards on KERNEL_SOURCE=evolution-x).
-      # Feature flags (HZ_300, MGLRU, BBR, NTSync) are controlled via:
-      #   - Repository variables (vars.GKID_ENABLE_*) for the dedicated workflow
-      #   - Environment defaults in the env: block above for general builds
-      - name: Apply GKID performance config fragment
-        run: bash scripts/apply-gkid-config-fragment.sh
-
+      # NOTE: GKID performance config fragment is applied inside build-kernel.sh
+      # (after defconfig + GKI fragment merge, before olddefconfig).
+      # The script scripts/apply-gkid-config-fragment.sh is a no-op for non-evox sources.
       - name: Build kernel
         run: bash scripts/build-kernel.sh
 
