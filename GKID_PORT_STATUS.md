@@ -181,7 +181,7 @@ This maximizes the probability of compatibility. However:
 
 | Run | Branch | Result | Artifact | Notes |
 |---|---|---|---|---|
-| — | `feature/marble-evolutionx-gkid-performance` | PENDING | — | Initial push; awaiting first CI run |
+| [#36961334255](https://github.com/Anurag12shukla/marble-kernel-builder/actions/runs/36961334255) | `feature/marble-evolutionx-gkid-performance` | ✅ **SUCCESS** | `AK3_marble_LOS_evolution-x_resukisu-v4.2.0-rc3-3a2745f7-code35194_susfs-v2.3.0_r5.zip` | Full build verified: MGLRU, BBR, Westwood+, ThinLTO, ReSukiSU + SUSFS v2.3.0. SHA256: `1137927475549f2fc5246d844ff6a6fbf5adebba13e25e002be7746983dea111` |
 
 *This table is updated after each GitHub Actions run.*
 
