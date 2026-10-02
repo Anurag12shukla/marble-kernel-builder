@@ -149,6 +149,22 @@ else
   echo "GKID script not found at ${GKID_SCRIPT} — skipping"
 fi
 
+# ── Apply NetHunter config fragments (nethunter profile only) ────────────────
+# Triggered when ARTIFACT_LABEL contains "nethunter". No-op for all other profiles.
+# Applied AFTER GKID fragments so NetHunter additions layer cleanly on top.
+# olddefconfig is called once at the end of this block — not inside the scripts.
+NH_SCRIPT="${GITHUB_WORKSPACE:-..}/scripts/apply-nethunter-config-fragments.sh"
+if [[ "${ARTIFACT_LABEL:-}" == *nethunter* ]]; then
+  if [[ -f "${NH_SCRIPT}" ]]; then
+    echo "Applying NetHunter config fragments (ARTIFACT_LABEL=${ARTIFACT_LABEL})" | \
+      tee -a "${RELEASE_DIR}/build.log"
+    KERNEL_DIR="." SKIP_OLDDEFCONFIG=1 \
+      bash "${NH_SCRIPT}" 2>&1 | tee -a "${RELEASE_DIR}/build.log"
+  else
+    echo "::warning::NetHunter script not found at ${NH_SCRIPT} — skipping NH fragments"
+  fi
+fi
+
 make O="${OUT_DIR}" ARCH="${ARCH}" LLVM=1 LLVM_IAS=1 CC="${CC}" olddefconfig 2>&1 | tee -a "${RELEASE_DIR}/build.log"
 
 if [[ "${MANAGER}" != "none" ]] && ! grep -q '^CONFIG_KSU=y$' "${OUT_DIR}/.config"; then
