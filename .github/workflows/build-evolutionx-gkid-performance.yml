@@ -46,11 +46,12 @@ on:
       susfs_version:
         description: SUSFS version
         type: choice
-        default: v2.2.0
+        default: latest
         options:
+          - latest
+          - v2.3.0
           - v2.2.0
           - v2.1.0
-          - latest
           - custom
       susfs_ref:
         description: "Custom SUSFS ref (only used when susfs_version=custom)"

@@ -141,11 +141,13 @@ echo "▸ Applying safety / compatibility guards"
 # KSM must remain disabled (security + Spectre risk; Evolution X default)
 cfg -d KSM
 
-# ── Regenerate olddefconfig ──────────────────────────────────────────────────
-echo ""
-echo "▸ Running olddefconfig to resolve symbol dependencies"
-make -C "${KERNEL_DIR}" O="${OUT_DIR}" ARCH="${ARCH}" LLVM=1 LLVM_IAS=1 \
-  olddefconfig 2>&1
+# ── Regenerate olddefconfig (if standalone) ──────────────────────────────────
+if [[ "${SKIP_OLDDEFCONFIG}" != "1" ]]; then
+  echo ""
+  echo "▸ Running olddefconfig to resolve symbol dependencies"
+  make -C "${KERNEL_DIR}" O="${OUT_DIR}" ARCH="${ARCH}" LLVM=1 LLVM_IAS=1 \
+    olddefconfig 2>&1
+fi
 
 # ── Verification ─────────────────────────────────────────────────────────────
 echo ""
@@ -222,13 +224,3 @@ fi
 
 echo ""
 echo "✅ GKID config fragment applied and verified."
-
-# ── Run olddefconfig unless caller (build-kernel.sh) is handling it ──────────
-if [[ "${SKIP_OLDDEFCONFIG}" != "1" ]]; then
-  echo ""
-  echo "▸ Running olddefconfig to resolve symbol dependencies"
-  make -C "${KERNEL_DIR}" O="${OUT_DIR}" ARCH="${ARCH}" LLVM=1 LLVM_IAS=1 \
-    olddefconfig 2>&1
-else
-  echo "▸ Skipping olddefconfig (build-kernel.sh will run it after this script)"
-fi

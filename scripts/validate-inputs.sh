@@ -71,8 +71,8 @@ if [[ "${ENABLE_SUSFS}" == "true" && "${MANAGER}" == "none" ]]; then
 fi
 
 case "${SUSFS_VERSION}" in
-  latest|v2.2.0|v2.1.0|custom) ;;
-  *) echo "::error::SUSFS_VERSION must be latest, v2.2.0, v2.1.0, or custom, got ${SUSFS_VERSION}"; exit 1 ;;
+  latest|v2.3.0|v2.2.0|v2.1.0|custom) ;;
+  *) echo "::error::SUSFS_VERSION must be latest, v2.3.0, v2.2.0, v2.1.0, or custom, got ${SUSFS_VERSION}"; exit 1 ;;
 esac
 
 if [[ "${ENABLE_SUSFS}" == "true" ]]; then

@@ -1,5 +1,10 @@
 {
   "gki-android12-5.10": {
+    "v2.3.0": {
+      "ref": "9892175b4acec7ee844e113b8d02c0f4d12cdfac",
+      "commit": "9892175b4acec7ee844e113b8d02c0f4d12cdfac",
+      "notes": "SUSFS v2.3.0 on gki-android12-5.10; includes sucompat TIF_PROC_NO_SU flags required by modern ReSukiSU."
+    },
     "v2.2.0": {
       "ref": "4003ecf2d01c6d13fa8edf6c4f2607365738dc3d",
       "commit": "4003ecf2d01c6d13fa8edf6c4f2607365738dc3d",
