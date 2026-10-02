@@ -308,41 +308,44 @@ jobs:
             echo "::error::No release assets found"
             exit 1
           fi
+          printf "%s\n" \
+            "## marble-evox-nethunter-daily" \
+            "" \
+            "**Device**: POCO F5 (marble / marblein)" \
+            "**ROM**: Evolution X 17.0 (Android 17)" \
+            "**Source**: Evolution-X-Devices/kernel_xiaomi_sm8450 @ cnb" \
+            "**Toolchain**: LLVM 22.1.8" \
+            "**LTO**: ThinLTO" \
+            "**Manager**: ReSukiSU + SUSFS" \
+            "**Branch**: feature/marble-evox-nethunter-daily" \
+            "" \
+            "### NetHunter Features" \
+            "- USB HID Gadget (DuckHunter, BadUSB, USB Arsenal)" \
+            "- CDC ACM / SERIAL / ECM / NCM / RNDIS / EEM" \
+            "- ATH9K_HTC, RT2800USB, RTL8187, MT7601U Wi-Fi (USB OTG)" \
+            "- USB Bluetooth (BCM, RTL, VHCI)" \
+            "- Linux Namespaces + TUN/TAP (chroot, VPN)" \
+            "- USB Ethernet (RTL8150, RTL8152/RTL8153)" \
+            "" \
+            "### Performance (GKID base retained)" \
+            "MGLRU · ZRAM+LZ4 · BBR · Westwood+ · FQ · FQ-CoDel · PSI · ZSTD" \
+            "" \
+            "### Root Hiding" \
+            "ReSukiSU v4.2.0-rc3 · SUSFS" \
+            "(ptrace protection, mount hiding, sus_path — all present)" \
+            "" \
+            "### ⚠️ Status" \
+            "All features: **CONFIG CONFIRMED** — BUILD CONFIRMED pending." \
+            "Runtime / Hardware testing **NOT** complete." \
+            "Wi-Fi injection NOT claimed — hardware testing required." \
+            "" \
+            "### ⚠️ Manual Flash Required" \
+            "DO NOT flash automatically. Review SHA256 and MARBLE_NETHUNTER_FEATURE_MANIFEST.md." \
+            "" \
+            "Built by GitHub Actions — Run #${GITHUB_RUN_NUMBER}" \
+            > release-notes.md
           gh release create "${tag}" "${all_assets[@]}" \
             --draft \
             --target "${GITHUB_SHA}" \
             --title "Marble EvolutionX NetHunter Daily · r${GITHUB_RUN_NUMBER}" \
-            --notes "## marble-evox-nethunter-daily
-
-**Device**: POCO F5 (marble / marblein)
-**ROM**: Evolution X 17.0 (Android 17)
-**Source**: Evolution-X-Devices/kernel_xiaomi_sm8450 @ cnb (\`${{ inputs.source_commit || '4a234e4dff23' }}\`)
-**Toolchain**: LLVM 22.1.8
-**LTO**: ThinLTO
-**Manager**: ReSukiSU + SUSFS \`${{ inputs.susfs_version }}\`
-**Branch**: feature/marble-evox-nethunter-daily
-
-### NetHunter Features
-- USB HID Gadget (DuckHunter, BadUSB, USB Arsenal)
-- CDC ACM / SERIAL / ECM / NCM / RNDIS / EEM
-- ATH9K_HTC, RT2800USB, RTL8187, MT7601U Wi-Fi (USB OTG)
-- USB Bluetooth (BCM, RTL, VHCI)
-- Linux Namespaces + TUN/TAP (chroot, VPN)
-- USB Ethernet (RTL8150, RTL8152/RTL8153)
-
-### Performance (GKID base retained)
-MGLRU · ZRAM+LZ4 · BBR · Westwood+ · FQ · FQ-CoDel · PSI · ZSTD
-
-### Root Hiding
-ReSukiSU v4.2.0-rc3 · SUSFS v${{ inputs.susfs_version }}
-(ptrace protection, mount hiding, sus_path — all present)
-
-### ⚠️ Status
-All features: **CONFIG CONFIRMED** — BUILD CONFIRMED pending.
-Runtime / Hardware testing **NOT** complete.
-Wi-Fi injection NOT claimed — hardware testing required.
-
-### ⚠️ Manual Flash Required
-DO NOT flash automatically. Review SHA256 and \`MARBLE_NETHUNTER_FEATURE_MANIFEST.md\`.
-
-Built by GitHub Actions — Run #${{ github.run_number }}"
+            --notes-file release-notes.md
