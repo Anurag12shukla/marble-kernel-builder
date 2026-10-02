@@ -93,6 +93,12 @@ jobs:
       LTO: ${{ inputs.lto }}
       ANDROID_CLANG_BIN: ${{ github.workspace }}/android-clang/clang-r416183b/bin
       LLVM_22_1_8_BIN: ${{ github.workspace }}/llvm-22.1.8/bin
+      # GKID performance feature flags — consumed by scripts/apply-gkid-config-fragment.sh
+      # These are no-op for non-evolution-x sources (the script guards on KERNEL_SOURCE).
+      GKID_ENABLE_HZ_300: ${{ vars.GKID_ENABLE_HZ_300 || 'false' }}
+      GKID_ENABLE_MGLRU: ${{ vars.GKID_ENABLE_MGLRU || 'true' }}
+      GKID_ENABLE_BBR: ${{ vars.GKID_ENABLE_BBR || 'true' }}
+      GKID_ENABLE_NTSYNC: ${{ vars.GKID_ENABLE_NTSYNC || 'false' }}
 
     steps:
       - name: Checkout builder
@@ -336,6 +342,14 @@ jobs:
 
       - name: Apply SUSFS
         run: bash scripts/apply-susfs.sh
+
+      # Apply GKID performance config options for evolution-x builds.
+      # No-op for all other kernel sources (script guards on KERNEL_SOURCE=evolution-x).
+      # Feature flags (HZ_300, MGLRU, BBR, NTSync) are controlled via:
+      #   - Repository variables (vars.GKID_ENABLE_*) for the dedicated workflow
+      #   - Environment defaults in the env: block above for general builds
+      - name: Apply GKID performance config fragment
+        run: bash scripts/apply-gkid-config-fragment.sh
 
       - name: Build kernel
         run: bash scripts/build-kernel.sh

@@ -1,0 +1,253 @@
+name: Build Evolution X GKID Performance Kernel
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Purpose:
+#   Dedicated workflow for the marble-evolutionx-gkid-performance profile.
+#
+# Source:    Evolution-X-Devices/kernel_xiaomi_sm8450 @ cnb
+# ROM:       Evolution X 17.0 (Android 17) — marble / marblein
+# Toolchain: LLVM 22.1.8 (matches running kernel clang 22.1.8)
+# LTO:       ThinLTO (matches running kernel; thin is OOM-safe on free runners)
+# Manager:   ReSukiSU (with SUSFS enabled — all options verified from running config)
+# SUSFS:     v2.2.0 pinned (proven on marble CI 2026-06-22)
+# Branch:    feature/marble-evolutionx-gkid-performance
+#
+# GKID Features selectively applied via config overlay (see config/fragments/):
+#   - 300 Hz timer (HZ_300) — evaluated; safe for GKI if Qualcomm clock doesn't conflict
+#   - MGLRU / LRU_GEN — backported for 5.10 GKI; improves memory reclaim
+#   - TCP advanced + BBRv3 — replaces Cubic; better mobile/Wi-Fi throughput
+#   - Westwood+ — retained as fallback congestion algorithm
+#   - ZRAM improvements — LZ4 compression (already present), tuning config
+#   - NTSync — optional Wine/DXVK compatibility driver (safe, no Qualcomm conflicts)
+#
+# Excluded (per task.md Phase 13):
+#   - NetHunter, DroidSpaces, offensive security tooling
+#   - Baseband Guard (Qualcomm modem risk; left for future evaluation)
+#   - Neutron Clang (not used; LLVM 22.1.8 matches running kernel toolchain)
+#   - Full LTO (memory-heavy; ThinLTO is appropriate for compatibility + free runners)
+#
+# Usage:
+#   Actions → "Build Evolution X GKID Performance Kernel" → Run workflow
+#
+# ABSOLUTE RULES (from task.md):
+#   - Never compile locally
+#   - Do not flash anything automatically
+#   - Do not modify main directly
+#   - Do not create a PR to upstream
+# ══════════════════════════════════════════════════════════════════════════════
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: "Evolution X source branch/tag/commit (empty = cnb)"
+        required: false
+        default: ""
+      susfs_version:
+        description: SUSFS version
+        type: choice
+        default: v2.2.0
+        options:
+          - v2.2.0
+          - v2.1.0
+          - latest
+          - custom
+      susfs_ref:
+        description: "Custom SUSFS ref (only used when susfs_version=custom)"
+        required: false
+        default: ""
+      enable_hz_300:
+        description: "Enable 300Hz timer (HZ_300) — evaluate before enabling on first build"
+        type: boolean
+        default: false
+      enable_mglru:
+        description: "Enable MGLRU / LRU_GEN memory reclaim improvement"
+        type: boolean
+        default: true
+      enable_bbr:
+        description: "Enable BBR + TCP advanced congestion algorithms"
+        type: boolean
+        default: true
+      enable_ntsync:
+        description: "Enable NTSync (optional; safe kernel driver, no Qualcomm conflicts)"
+        type: boolean
+        default: false
+      build_scope:
+        description: Build target set
+        type: choice
+        default: image-only
+        options:
+          - image-only
+          - full
+      lto:
+        description: "LTO mode (thin=default; full is OOM-heavy on free runners)"
+        type: choice
+        default: thin
+        options:
+          - none
+          - thin
+          - full
+      enable_ccache:
+        description: Enable ccache
+        type: boolean
+        default: true
+      create_draft_release:
+        description: Create a draft GitHub release on success
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ── Setup: Persist GKID feature flags as repository variables ──────────────
+  # GitHub's workflow_call inputs cannot pass env vars to called workflows.
+  # Instead, we write them as repository-level vars (GKID_ENABLE_*) before
+  # triggering the build. build-core.yml reads them via vars.GKID_ENABLE_*.
+  # These are ephemeral overrides — safe to re-run multiple times.
+  configure-gkid-flags:
+    name: "Configure GKID feature flags"
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: write     # needed for gh variable set
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Set GKID repository variables
+        run: |
+          set_var() {
+            local name="$1" value="$2"
+            echo "Setting ${name}=${value}"
+            gh variable set "${name}" --body "${value}" --repo "${GITHUB_REPOSITORY}" || \
+              echo "::warning::Could not set repo var ${name} — check token scopes. Defaults will be used."
+          }
+          set_var "GKID_ENABLE_HZ_300"  "${{ inputs.enable_hz_300 }}"
+          set_var "GKID_ENABLE_MGLRU"   "${{ inputs.enable_mglru }}"
+          set_var "GKID_ENABLE_BBR"     "${{ inputs.enable_bbr }}"
+          set_var "GKID_ENABLE_NTSYNC"  "${{ inputs.enable_ntsync }}"
+          echo "GKID feature flags configured."
+          echo "| Flag | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| HZ_300 | ${{ inputs.enable_hz_300 }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| MGLRU | ${{ inputs.enable_mglru }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| BBR | ${{ inputs.enable_bbr }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| NTSync | ${{ inputs.enable_ntsync }} |" >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    name: "EvolutionX GKID Performance · ReSukiSU+SUSFS"
+    needs: configure-gkid-flags
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/build-core.yml
+    with:
+      kernel_source: evolution-x
+      source_ref: ${{ inputs.source_ref }}
+      manager: resukisu
+      manager_ref: ""
+      enable_susfs: true
+      susfs_version: ${{ inputs.susfs_version }}
+      susfs_kernel_branch: gki-android12-5.10
+      susfs_ref: ${{ inputs.susfs_ref }}
+      susfs_expected_version: ""
+      build_scope: ${{ inputs.build_scope }}
+      toolchain: llvm-22.1.8
+      lto: ${{ inputs.lto }}
+      enable_ccache: ${{ inputs.enable_ccache }}
+      artifact_label: evox-gkid-perf
+      run_policy_tests: true
+      publish_step_summary: true
+
+  post-build-summary:
+    name: "GKID Feature Summary"
+    runs-on: ubuntu-24.04
+    needs: build
+    if: ${{ always() && needs.build.result == 'success' }}
+    permissions:
+      contents: read
+    steps:
+      - name: Report GKID feature selections
+        run: |
+          echo "## GKID Feature Selection Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Feature | Enabled |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---------|---------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| 300Hz Timer (HZ\_300) | ${{ inputs.enable_hz_300 }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| MGLRU / LRU\_GEN | ${{ inputs.enable_mglru }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| BBR + TCP Advanced | ${{ inputs.enable_bbr }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| NTSync | ${{ inputs.enable_ntsync }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Source**: Evolution-X-Devices/kernel\_xiaomi\_sm8450 @ cnb" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Toolchain**: LLVM 22.1.8 (matches running kernel)" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Manager**: ReSukiSU + SUSFS \`${{ inputs.susfs_version }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "**LTO**: \`${{ inputs.lto }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "> Config options applied by \`scripts/apply-gkid-config-fragment.sh\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "> See \`GKID_PORT_STATUS.md\` in the repo for full feature analysis." >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    name: Create draft release
+    needs: [build, post-build-summary]
+    if: ${{ inputs.create_draft_release == true && needs.build.result == 'success' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout builder
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Download flash artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ needs.build.outputs.flash_artifact_name }}
+          path: release-artifacts
+
+      - name: Create draft release
+        run: |
+          tag="marble-evox-gkid-r${GITHUB_RUN_NUMBER}"
+          if gh release view "${tag}" > /dev/null 2>&1; then
+            echo "::error::Release ${tag} already exists"
+            exit 1
+          fi
+          mapfile -t zip_files < <(find release-artifacts -name '*.zip' | sort)
+          mapfile -t sha_files < <(find release-artifacts -name '*.sha256' | sort)
+          mapfile -t meta_files < <(find release-artifacts \
+            -name 'build-info.txt' -o -name 'build-info.json' \
+            -o -name 'summary.md' | sort)
+          all_assets=("${zip_files[@]}" "${sha_files[@]}" "${meta_files[@]}")
+          if [[ "${#all_assets[@]}" -eq 0 ]]; then
+            echo "::error::No release assets found"
+            exit 1
+          fi
+          gh release create "${tag}" "${all_assets[@]}" \
+            --draft \
+            --target "${GITHUB_SHA}" \
+            --title "Marble EvolutionX GKID Performance · r${GITHUB_RUN_NUMBER}" \
+            --notes "## marble-evolutionx-gkid-performance
+
+**Device**: POCO F5 (marble / marblein)
+**ROM**: Evolution X 17.0 (Android 17)
+**Source**: Evolution-X-Devices/kernel_xiaomi_sm8450 @ cnb
+**Toolchain**: LLVM 22.1.8 (matches running kernel)
+**LTO**: ThinLTO
+**Manager**: ReSukiSU + SUSFS
+
+### GKID Features Applied
+See \`build-info.txt\`, \`summary.md\`, and \`GKID_PORT_STATUS.md\` in artifacts.
+
+### ⚠️ Manual Flash Required
+Do NOT flash automatically. Review the ZIP contents and flashing instructions
+in \`GKID_PORT_STATUS.md\` before proceeding.
+
+Built by GitHub Actions — Run #${{ github.run_number }}"
