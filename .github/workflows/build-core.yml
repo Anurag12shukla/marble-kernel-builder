@@ -155,6 +155,12 @@ jobs:
               exit 1
             fi
             if [[ "${current_commit}" != "${expected_commit}"* ]]; then
+              echo "Attempting to fetch and checkout pinned commit ${expected_commit}..."
+              git fetch --depth=20 origin "${expected_commit}" 2>/dev/null || git fetch origin "${expected_commit}" 2>/dev/null || true
+              git checkout "${expected_commit}" 2>/dev/null || true
+              current_commit="$(git rev-parse HEAD)"
+            fi
+            if [[ "${current_commit}" != "${expected_commit}"* ]]; then
               echo "::error::[NETHUNTER HARD-FAIL] Checked out commit (${current_commit}) does not match expected (${expected_commit})"
               exit 1
             fi

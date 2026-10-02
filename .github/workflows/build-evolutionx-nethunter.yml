@@ -145,7 +145,7 @@ jobs:
     uses: ./.github/workflows/build-core.yml
     with:
       kernel_source: evolution-x
-      source_ref: ${{ inputs.source_commit || inputs.source_ref || '4a234e4dff23' }}
+      source_ref: ${{ inputs.source_ref || 'cnb' }}
       manager: resukisu
       manager_ref: ""
       enable_susfs: true
