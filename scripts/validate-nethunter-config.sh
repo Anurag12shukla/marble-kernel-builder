@@ -18,9 +18,9 @@ WARN=0
 
 STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}"
 
-pass() { echo "  ✅ PASS  $*"; ((PASS++)); }
-fail() { echo "  ❌ FAIL  $*"; echo "::error::CONFIG CHECK FAILED: $*"; ((FAIL++)); }
-warn() { echo "  ⚠️  WARN  $*"; echo "::warning::CONFIG CHECK WARN: $*"; ((WARN++)); }
+pass() { echo "  ✅ PASS  $*"; ((PASS++)) || true; }
+fail() { echo "  ❌ FAIL  $*"; echo "::error::CONFIG CHECK FAILED: $*"; ((FAIL++)) || true; }
+warn() { echo "  ⚠️  WARN  $*"; echo "::warning::CONFIG CHECK WARN: $*"; ((WARN++)) || true; }
 section() { echo ""; echo "── $* ──"; }
 
 config_is() {
@@ -44,47 +44,54 @@ config_set CONFIG_MODULE_UNLOAD && pass "Module unloading" || warn "Module unloa
 config_set CONFIG_MODVERSIONS && pass "MODVERSIONS (vendor compat)" || fail "MODVERSIONS missing — vendor modules will break"
 
 # ── §23 ROOT MANAGER ─────────────────────────────────────────────────────────
-section "Root Manager (ReSukiSU + SUSFS)"
-config_set CONFIG_KSU && pass "CONFIG_KSU enabled" || fail "CONFIG_KSU missing — ReSukiSU not present"
-# SUSFS options — check a representative set
-for opt in CONFIG_KSU_SUSFS CONFIG_KSU_SUSFS_SUS_PATH CONFIG_KSU_SUSFS_SUS_MOUNT \
+section "Root Manager (ReSukiSU + SUSFS v2.3.0)"
+config_set CONFIG_KSU && pass "CONFIG_KSU enabled (ReSukiSU)" || fail "CONFIG_KSU missing — ReSukiSU not present"
+config_set CONFIG_KSU_SUSFS && pass "CONFIG_KSU_SUSFS enabled" || fail "CONFIG_KSU_SUSFS missing — SUSFS root hiding missing"
+for opt in CONFIG_KSU_SUSFS_SUS_PATH CONFIG_KSU_SUSFS_SUS_MOUNT \
            CONFIG_KSU_SUSFS_TRY_UMOUNT CONFIG_KSU_SUSFS_SPOOF_UNAME; do
     config_set "${opt}" && pass "${opt}" || warn "${opt} not set (may depend on ReSukiSU version)"
 done
 
 # ── §23 NETHUNTER — USB GADGET ────────────────────────────────────────────────
-section "NetHunter USB Gadget"
-config_set CONFIG_USB_GADGET && pass "USB gadget subsystem" || fail "CONFIG_USB_GADGET missing"
-config_set CONFIG_USB_CONFIGFS && pass "USB ConfigFS" || fail "CONFIG_USB_CONFIGFS missing"
+section "NetHunter USB Gadget (BadUSB / DuckHunter / CDC Arsenal)"
+config_set CONFIG_USB_GADGET && pass "CONFIG_USB_GADGET" || fail "CONFIG_USB_GADGET missing"
+config_set CONFIG_USB_CONFIGFS && pass "CONFIG_USB_CONFIGFS" || fail "CONFIG_USB_CONFIGFS missing"
 for opt in CONFIG_USB_CONFIGFS_SERIAL CONFIG_USB_CONFIGFS_ACM \
            CONFIG_USB_CONFIGFS_NCM CONFIG_USB_CONFIGFS_ECM \
-           CONFIG_USB_CONFIGFS_RNDIS CONFIG_USB_CONFIGFS_F_HID; do
-    config_set "${opt}" && pass "${opt}" || fail "${opt} missing — NetHunter USB attack surface incomplete"
+           CONFIG_USB_CONFIGFS_RNDIS CONFIG_USB_CONFIGFS_F_HID \
+           CONFIG_USB_CONFIGFS_MASS_STORAGE; do
+    config_set "${opt}" && pass "${opt}" || fail "${opt} missing — NetHunter USB requirement failed"
 done
-config_set CONFIG_USB_CONFIGFS_MASS_STORAGE && pass "CONFIG_USB_CONFIGFS_MASS_STORAGE" || \
-    warn "CONFIG_USB_CONFIGFS_MASS_STORAGE not set (optional)"
 
 # ── §23 NETHUNTER — EXTERNAL WIFI ────────────────────────────────────────────
-section "NetHunter External Wi-Fi"
-config_set CONFIG_MAC80211 && pass "CONFIG_MAC80211" || fail "MAC80211 missing — USB Wi-Fi drivers need this"
-for opt in CONFIG_ATH9K_HTC CONFIG_RT2800USB CONFIG_MT7601U \
-           CONFIG_WLAN_VENDOR_REALTEK CONFIG_RTL8187 CONFIG_RTL8XXXU; do
-    config_set "${opt}" && pass "${opt}" || warn "${opt} not set"
+section "NetHunter External Wi-Fi (Monitor & Injection Stack)"
+config_set CONFIG_CFG80211 && pass "CONFIG_CFG80211" || fail "CONFIG_CFG80211 missing"
+config_set CONFIG_MAC80211 && pass "CONFIG_MAC80211" || fail "CONFIG_MAC80211 missing"
+for opt in CONFIG_ATH9K_HTC CONFIG_RT2800USB CONFIG_RTL8187 CONFIG_MT7601U; do
+    config_set "${opt}" && pass "${opt}" || fail "${opt} missing — Mandatory NetHunter Wi-Fi adapter driver missing"
+done
+for opt in CONFIG_WLAN_VENDOR_REALTEK CONFIG_RTL8XXXU CONFIG_CARL9170 CONFIG_RT73USB; do
+    config_set "${opt}" && pass "${opt} (secondary)" || warn "${opt} not set (optional)"
 done
 
 # ── §23 NETHUNTER — BLUETOOTH ─────────────────────────────────────────────────
-section "NetHunter Bluetooth"
-for opt in CONFIG_BT_HCIBTUSB CONFIG_BT_HCIBTUSB_BCM CONFIG_BT_HCIBTUSB_RTL \
-           CONFIG_BT_HCIUART CONFIG_BT_HCIVHCI; do
-    config_set "${opt}" && pass "${opt}" || warn "${opt} not set"
+section "NetHunter Bluetooth (External USB HCI & Virtual HCI)"
+for opt in CONFIG_BT_HCIBTUSB CONFIG_BT_HCIBTUSB_BCM CONFIG_BT_HCIBTUSB_RTL CONFIG_BT_HCIVHCI; do
+    config_set "${opt}" && pass "${opt}" || fail "${opt} missing — Mandatory NetHunter Bluetooth requirement failed"
+done
+for opt in CONFIG_BT_HCIUART CONFIG_BT_HCIBCM203X; do
+    config_set "${opt}" && pass "${opt} (secondary)" || warn "${opt} not set (optional)"
 done
 
-# ── §23 NETHUNTER — NETWORK ───────────────────────────────────────────────────
-section "NetHunter Network"
+# ── §23 NETHUNTER — NETWORK & CONTAINERS ──────────────────────────────────────
+section "NetHunter Network & Namespaces (Kali Chroot & USB Networking)"
+config_set CONFIG_NAMESPACES && pass "CONFIG_NAMESPACES" || fail "CONFIG_NAMESPACES missing — Kali chroot broken"
+config_set CONFIG_USER_NS && pass "CONFIG_USER_NS" || fail "CONFIG_USER_NS missing"
+config_set CONFIG_PID_NS && pass "CONFIG_PID_NS" || fail "CONFIG_PID_NS missing"
+config_set CONFIG_NET_NS && pass "CONFIG_NET_NS" || fail "CONFIG_NET_NS missing"
 config_set CONFIG_TUN && pass "CONFIG_TUN (VPN/OpenVPN)" || fail "CONFIG_TUN missing"
-config_set CONFIG_NET_NS && pass "CONFIG_NET_NS" || fail "Network namespaces missing — chroot broken"
-config_set CONFIG_PID_NS && pass "CONFIG_PID_NS" || warn "PID namespaces not set"
-config_set CONFIG_USB_RTL8152 && pass "CONFIG_USB_RTL8152 (USB Ethernet)" || warn "RTL8152 USB Ethernet not set"
+config_set CONFIG_USB_RTL8152 && pass "CONFIG_USB_RTL8152 (RTL8152/8153 USB Ethernet)" || fail "CONFIG_USB_RTL8152 missing"
+config_set CONFIG_USB_NET_RNDIS_HOST && pass "CONFIG_USB_NET_RNDIS_HOST (Host RNDIS)" || fail "CONFIG_USB_NET_RNDIS_HOST missing"
 
 # ── §23 PERFORMANCE (from GKID base) ─────────────────────────────────────────
 section "Performance (GKID base preserved)"

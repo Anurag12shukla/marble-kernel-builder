@@ -99,9 +99,14 @@ for frag in "${NH_FRAGMENTS[@]}"; do
 done
 
 # ── Regenerate .config to resolve dependencies ─────────────────────────────────
-log "Resolving config dependencies with olddefconfig..."
-make O="${OUT_DIR}" ARCH="${ARCH}" LLVM=1 LLVM_IAS=1 olddefconfig 2>&1 | \
-    grep -v "^#" || true
+SKIP_OLDDEFCONFIG="${SKIP_OLDDEFCONFIG:-0}"
+if [[ "${SKIP_OLDDEFCONFIG}" != "1" ]]; then
+    log "Resolving config dependencies with olddefconfig..."
+    make O="${OUT_DIR}" ARCH="${ARCH}" LLVM=1 LLVM_IAS=1 olddefconfig 2>&1 | \
+        grep -v "^#" || true
+else
+    log "Skipping olddefconfig (handled by caller: build-kernel.sh)"
+fi
 
 log "NetHunter config fragments applied successfully."
 

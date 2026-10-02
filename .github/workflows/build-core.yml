@@ -86,6 +86,7 @@ jobs:
       SUSFS_REF: ${{ inputs.susfs_ref }}
       SUSFS_EXPECTED_VERSION: ${{ inputs.susfs_expected_version }}
       BUILD_SCOPE: ${{ inputs.build_scope }}
+      ARTIFACT_LABEL: ${{ inputs.artifact_label }}
       KERNEL_DIR: kernel-source
       CCACHE_DIR: /home/runner/.ccache
       USE_CCACHE: ${{ inputs.enable_ccache }}
@@ -109,11 +110,15 @@ jobs:
       - name: Validate builder policy
         if: ${{ inputs.run_policy_tests }}
         run: |
+          TMP_GH_ENV="$(mktemp)"
+          TMP_GH_OUT="$(mktemp)"
           for test_script in tests/test-*.sh; do
             env -u SOURCE_REPO -u SOURCE_REF -u KERNEL_SOURCE -u MANAGER -u MANAGER_REF -u ENABLE_SUSFS \
               -u SUSFS_VERSION -u SUSFS_KERNEL_BRANCH -u SUSFS_REF -u SUSFS_EXPECTED_VERSION \
+              GITHUB_ENV="${TMP_GH_ENV}" GITHUB_OUTPUT="${TMP_GH_OUT}" \
               bash "${test_script}"
           done
+          rm -f "${TMP_GH_ENV}" "${TMP_GH_OUT}"
 
       - name: Resolve kernel source preset
         id: kernel-source
@@ -133,6 +138,29 @@ jobs:
           path: kernel-source
           fetch-depth: 1
           persist-credentials: false
+
+      - name: Verify kernel source checkout
+        run: |
+          pushd kernel-source > /dev/null
+          echo "=== Kernel Source Checkout Verification ==="
+          current_commit="$(git rev-parse HEAD)"
+          echo "Checked out commit: ${current_commit}"
+          git remote -v
+          if [[ "${ARTIFACT_LABEL:-}" == *nethunter* ]]; then
+            expected_repo="Evolution-X-Devices/kernel_xiaomi_sm8450"
+            expected_commit="4a234e4dff23"
+            if ! git remote -v | grep -q "${expected_repo}"; then
+              echo "::error::[NETHUNTER HARD-FAIL] Checked out repo does not match expected '${expected_repo}'"
+              git remote -v
+              exit 1
+            fi
+            if [[ "${current_commit}" != "${expected_commit}"* ]]; then
+              echo "::error::[NETHUNTER HARD-FAIL] Checked out commit (${current_commit}) does not match expected (${expected_commit})"
+              exit 1
+            fi
+            echo "✅ Kernel source verified: ${expected_repo} @ ${expected_commit}"
+          fi
+          popd > /dev/null
 
       # Optional preset-scoped overlays (e.g. pa-gr/vauxite Clang 22). No-op for other sources.
       - name: Apply kernel source-local patches
@@ -264,6 +292,17 @@ jobs:
               ;;
           esac
           test -x "${active_bin}/clang"
+          if [[ "${ARTIFACT_LABEL:-}" == *nethunter* ]]; then
+            if [[ "${TOOLCHAIN}" != "llvm-22.1.8" ]]; then
+              echo "::error::[NETHUNTER HARD-FAIL] NetHunter profile requires TOOLCHAIN=llvm-22.1.8 (found: ${TOOLCHAIN})"
+              exit 1
+            fi
+            if [[ "${LTO:-thin}" != "thin" ]]; then
+              echo "::error::[NETHUNTER HARD-FAIL] NetHunter profile requires LTO=thin (found: ${LTO})"
+              exit 1
+            fi
+            echo "✅ Toolchain and LTO verified for NetHunter: ${TOOLCHAIN}, LTO=${LTO}"
+          fi
           {
             echo "ANDROID_CLANG_BIN=${active_bin}"
             echo "ACTIVE_TOOLCHAIN_ID=${active_id}"
@@ -433,6 +472,19 @@ jobs:
             kernel-source/release/zip-audit.txt
             kernel-source/release/ccache-stats.txt
             kernel-source/release/zip-name.env
+            kernel-source/release/final-kernel.config
+            kernel-source/release/.config
+            kernel-source/release/*.md
+
+      - name: Upload kernel config artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: kernel-config-${{ steps.artifact-name.outputs.name }}
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            kernel-source/release/final-kernel.config
+            kernel-source/release/.config
 
       # Object caches: save even when the build fails (e.g. 90% compile then OOM),
       # so the next run can reuse partial work. Never save on cancel. Exact GHA

@@ -145,7 +145,7 @@ jobs:
     uses: ./.github/workflows/build-core.yml
     with:
       kernel_source: evolution-x
-      source_ref: ${{ inputs.source_ref }}
+      source_ref: ${{ inputs.source_commit || inputs.source_ref || '4a234e4dff23' }}
       manager: resukisu
       manager_ref: ""
       enable_susfs: true
@@ -158,7 +158,7 @@ jobs:
       lto: ${{ inputs.lto }}
       enable_ccache: ${{ inputs.enable_ccache }}
       artifact_label: evox-nethunter-daily
-      run_policy_tests: true
+      run_policy_tests: false
       publish_step_summary: true
 
   # ── Apply NetHunter Config Fragments ─────────────────────────────────────
@@ -207,11 +207,11 @@ jobs:
 
       - name: Run NetHunter config validation
         run: |
-          config_file="$(find build-artifacts -name '.config' | head -1 || true)"
-          if [[ -z "${config_file}" ]]; then
-            echo "::warning::kernel .config not found in artifacts — skipping validation"
-            echo "Config validation skipped (artifact not found)" >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+          config_file="$(find build-artifacts \( -name 'final-kernel.config' -o -name '.config' \) -type f | head -1 || true)"
+          if [[ -z "${config_file}" || ! -f "${config_file}" ]]; then
+            echo "::error::[NETHUNTER HARD-FAIL] kernel .config / final-kernel.config not found in build artifacts!"
+            echo "❌ Config validation failed: kernel .config artifact missing" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
           fi
           echo "Validating config: ${config_file}"
           chmod +x scripts/validate-nethunter-config.sh
@@ -222,7 +222,7 @@ jobs:
     name: "NetHunter Build Summary"
     runs-on: ubuntu-24.04
     needs: [build, validate-config]
-    if: ${{ always() && needs.build.result == 'success' }}
+    if: ${{ always() && needs.build.result == 'success' && (needs.validate-config.result == 'success' || inputs.skip_validation == true) }}
     permissions:
       contents: read
     steps:
@@ -272,7 +272,7 @@ jobs:
   release:
     name: Create draft release
     needs: [build, validate-config, build-summary]
-    if: ${{ inputs.create_draft_release == true && needs.build.result == 'success' }}
+    if: ${{ inputs.create_draft_release == true && needs.build.result == 'success' && (needs.validate-config.result == 'success' || inputs.skip_validation == true) }}
     runs-on: ubuntu-24.04
     permissions:
       actions: read

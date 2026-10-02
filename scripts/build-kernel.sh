@@ -42,6 +42,61 @@ if [[ -n "${ANDROID_CLANG_BIN:-}" ]]; then
   export PATH="${ANDROID_CLANG_BIN}:${PATH}"
 fi
 
+# ── Build Identity & Environment Validation ──────────────────────────────────
+echo "=== BUILD IDENTITY CHECKS ==="
+echo "KERNEL_SOURCE=${KERNEL_SOURCE:-unknown}"
+echo "SOURCE_REF=${SOURCE_REF:-unknown}"
+echo "TOOLCHAIN=${TOOLCHAIN:-unknown}"
+echo "LTO=${LTO:-thin}"
+echo "ARTIFACT_LABEL=${ARTIFACT_LABEL:-}"
+
+if [[ "${ARTIFACT_LABEL:-}" == *nethunter* ]]; then
+  echo "Enforcing strict NetHunter Evolution X build identity..."
+  actual_commit="$(git rev-parse HEAD || echo "unknown")"
+  actual_remote="$(git remote -v || echo "unknown")"
+  echo "Git commit: ${actual_commit}"
+  echo "Git remote: ${actual_remote}"
+
+  expected_repo="Evolution-X-Devices/kernel_xiaomi_sm8450"
+  expected_commit="4a234e4dff23"
+
+  if ! echo "${actual_remote}" | grep -q "${expected_repo}"; then
+    echo "::error::[NETHUNTER HARD-FAIL] Checked-out remote does not match expected (${expected_repo})"
+    exit 1
+  fi
+
+  if [[ "${actual_commit}" != "${expected_commit}"* ]]; then
+    echo "::error::[NETHUNTER HARD-FAIL] Checked-out commit (${actual_commit}) does not match expected Evolution X commit (${expected_commit})"
+    exit 1
+  fi
+
+  if [[ "${TOOLCHAIN}" != "llvm-22.1.8" ]]; then
+    echo "::error::[NETHUNTER HARD-FAIL] NetHunter profile requires TOOLCHAIN=llvm-22.1.8 (found: ${TOOLCHAIN})"
+    exit 1
+  fi
+
+  if [[ "${LTO:-thin}" != "thin" ]]; then
+    echo "::error::[NETHUNTER HARD-FAIL] NetHunter profile requires LTO=thin (found: ${LTO})"
+    exit 1
+  fi
+
+  clang_ver="$(clang --version | head -n 1)"
+  echo "Clang version: ${clang_ver}"
+  if ! echo "${clang_ver}" | grep -Eq "(22\.1\.8|clang version 22)"; then
+    echo "::error::[NETHUNTER HARD-FAIL] Clang version (${clang_ver}) does not match LLVM 22.1.8"
+    exit 1
+  fi
+
+  lld_ver="$(ld.lld --version 2>&1 | head -n 1 || true)"
+  echo "LLD version: ${lld_ver}"
+  if ! echo "${lld_ver}" | grep -Eq "(22\.1\.8|LLD 22)"; then
+    echo "::error::[NETHUNTER HARD-FAIL] LLD version (${lld_ver}) does not match LLVM 22.1.8"
+    exit 1
+  fi
+
+  echo "✅ NetHunter Evolution X Build Identity Verified."
+fi
+
 if [[ "${USE_CCACHE}" == "true" ]] && command -v ccache >/dev/null 2>&1; then
   export CC="ccache clang"
   # LLVM 22 + LOS trees are heavier; allow a larger object cache when that toolchain is selected.
@@ -154,15 +209,16 @@ fi
 # Applied AFTER GKID fragments so NetHunter additions layer cleanly on top.
 # olddefconfig is called once at the end of this block — not inside the scripts.
 NH_SCRIPT="${GITHUB_WORKSPACE:-..}/scripts/apply-nethunter-config-fragments.sh"
+VALIDATE_SCRIPT="${GITHUB_WORKSPACE:-..}/scripts/validate-nethunter-config.sh"
 if [[ "${ARTIFACT_LABEL:-}" == *nethunter* ]]; then
-  if [[ -f "${NH_SCRIPT}" ]]; then
-    echo "Applying NetHunter config fragments (ARTIFACT_LABEL=${ARTIFACT_LABEL})" | \
-      tee -a "${RELEASE_DIR}/build.log"
-    KERNEL_DIR="." SKIP_OLDDEFCONFIG=1 \
-      bash "${NH_SCRIPT}" 2>&1 | tee -a "${RELEASE_DIR}/build.log"
-  else
-    echo "::warning::NetHunter script not found at ${NH_SCRIPT} — skipping NH fragments"
+  if [[ ! -f "${NH_SCRIPT}" ]]; then
+    echo "::error::[NETHUNTER HARD-FAIL] NetHunter script not found at ${NH_SCRIPT}"
+    exit 1
   fi
+  echo "Applying NetHunter config fragments (ARTIFACT_LABEL=${ARTIFACT_LABEL})" | \
+    tee -a "${RELEASE_DIR}/build.log"
+  KERNEL_DIR="." SKIP_OLDDEFCONFIG=1 \
+    bash "${NH_SCRIPT}" 2>&1 | tee -a "${RELEASE_DIR}/build.log"
 fi
 
 make O="${OUT_DIR}" ARCH="${ARCH}" LLVM=1 LLVM_IAS=1 CC="${CC}" olddefconfig 2>&1 | tee -a "${RELEASE_DIR}/build.log"
@@ -174,6 +230,21 @@ fi
 if [[ "${ENABLE_SUSFS}" == "true" ]] && ! grep -q '^CONFIG_KSU_SUSFS=y$' "${OUT_DIR}/.config"; then
   echo "::error::CONFIG_KSU_SUSFS is not enabled in the final kernel config"
   exit 1
+fi
+
+# ── Validate generated .config immediately BEFORE compile (NetHunter profile) ─
+if [[ "${ARTIFACT_LABEL:-}" == *nethunter* ]]; then
+  echo "Validating FINAL .config before starting compilation..." | tee -a "${RELEASE_DIR}/build.log"
+  if [[ ! -f "${OUT_DIR}/.config" ]]; then
+    echo "::error::[NETHUNTER HARD-FAIL] ${OUT_DIR}/.config missing before compilation"
+    exit 1
+  fi
+  if [[ -f "${VALIDATE_SCRIPT}" ]]; then
+    bash "${VALIDATE_SCRIPT}" "${OUT_DIR}/.config" 2>&1 | tee -a "${RELEASE_DIR}/build.log"
+  else
+    echo "::error::[NETHUNTER HARD-FAIL] Validation script not found: ${VALIDATE_SCRIPT}"
+    exit 1
+  fi
 fi
 
 targets=(Image)
@@ -224,6 +295,21 @@ for file in System.map vmlinux; do
     cp "${OUT_DIR}/${file}" "${RELEASE_DIR}/${file}"
   fi
 done
+
+# Copy final .config into release directory for CI artifact packaging
+if [[ -s "${OUT_DIR}/.config" ]]; then
+  cp "${OUT_DIR}/.config" "${RELEASE_DIR}/final-kernel.config"
+  cp "${OUT_DIR}/.config" "${RELEASE_DIR}/.config"
+  echo "Saved final-kernel.config and .config into release directory." | tee -a "${RELEASE_DIR}/build.log"
+else
+  echo "::error::[NETHUNTER HARD-FAIL] ${OUT_DIR}/.config missing after build"
+  exit 1
+fi
+
+manifest_src="${GITHUB_WORKSPACE:-..}/docs/MARBLE_NETHUNTER_FEATURE_MANIFEST.md"
+if [[ -f "${manifest_src}" ]]; then
+  cp "${manifest_src}" "${RELEASE_DIR}/MARBLE_NETHUNTER_FEATURE_MANIFEST.md"
+fi
 
 if [[ "${BUILD_SCOPE}" == "full" ]]; then
   if find "${OUT_DIR}/arch/arm64/boot/dts" -name '*.dtb' -print -quit | grep -q .; then
